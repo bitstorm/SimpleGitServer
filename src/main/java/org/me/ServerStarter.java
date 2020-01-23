@@ -6,13 +6,19 @@ import java.io.InputStream;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
+import java.security.KeyPair;
 import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.security.Security;
 import java.security.cert.CertificateFactory;
 import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import java.util.regex.Pattern;
+
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.eclipse.jgit.internal.storage.file.FileRepository;
+import org.eclipse.jgit.lib.Repository;
 
 public class ServerStarter {
 
@@ -20,8 +26,16 @@ public class ServerStarter {
         Security.addProvider(new BouncyCastleProvider());
         KeyFactory kf = KeyFactory.getInstance("RSA");
         CertificateFactory cf = CertificateFactory.getInstance("X.509");
-        PrivateKey key = kf.generatePrivate(new PKCS8EncodedKeySpec(loadPEM("/test_private.pem")));
-
+        
+        PrivateKey privateKey = kf.generatePrivate(new PKCS8EncodedKeySpec(loadPEM("/test_private.pem")));
+        PublicKey publicKey = kf.generatePublic(new X509EncodedKeySpec(loadPEM("/test_public.pem")));
+        
+        KeyPair keyPair = new KeyPair(publicKey, privateKey);
+        
+        Repository repository = new FileRepository("<path to repo>.git");
+        SimpleGitServer gitServer = new SimpleGitServer(repository, keyPair);
+        
+        gitServer.start();
     }
     
     private static byte[] loadPEM(String resource) throws IOException {

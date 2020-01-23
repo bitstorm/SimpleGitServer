@@ -3,7 +3,6 @@ package org.me;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.security.KeyPair;
-import java.security.PublicKey;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -18,8 +17,11 @@ import org.apache.sshd.common.util.threads.ThreadUtils;
 import org.apache.sshd.server.ServerAuthenticationManager;
 import org.apache.sshd.server.SshServer;
 import org.apache.sshd.server.auth.UserAuth;
+import org.apache.sshd.server.auth.hostbased.AcceptAllHostBasedAuthenticator;
+import org.apache.sshd.server.auth.keyboard.DefaultKeyboardInteractiveAuthenticator;
 import org.apache.sshd.server.command.AbstractCommandSupport;
 import org.apache.sshd.server.command.Command;
+import org.apache.sshd.server.session.ServerSession;
 import org.apache.sshd.server.shell.UnknownCommand;
 import org.apache.sshd.server.subsystem.sftp.SftpSubsystemFactory;
 import org.eclipse.jgit.lib.Repository;
@@ -38,22 +40,24 @@ public class SimpleGitServer {
     private final CloseableExecutorService executorService = ThreadUtils
             .newFixedThreadPool("SimpleGitServer", 4);
 
-    public SimpleGitServer(Repository repository, SshServer server, PublicKey testKey, KeyPair... hostKeys) {
+    public SimpleGitServer(Repository repository, KeyPair... hostKeys) {
         this.repository = repository;
         this.hostKeys = Arrays.asList(hostKeys);
         this.server = SshServer.setUpDefaultServer();
 
-        server.setKeyPairProvider((session) -> this.hostKeys);
+        this.server.setKeyPairProvider((session) -> this.hostKeys);
+        
+        configureAuthentication();
         
         List<NamedFactory<Command>> subsystems = configureSubsystems();
         
         if (!subsystems.isEmpty()) {
-            server.setSubsystemFactories(subsystems);
+            this.server.setSubsystemFactories(subsystems);
         }
 
         disableShell();
 
-        server.setCommandFactory(command -> {
+        this.server.setCommandFactory(command -> {
             if (command.startsWith(RemoteConfig.DEFAULT_UPLOAD_PACK)) {
                 return new GitUploadPackCommand(command, executorService);
             } else if (command.startsWith(RemoteConfig.DEFAULT_RECEIVE_PACK)) {
@@ -69,11 +73,20 @@ public class SimpleGitServer {
         server.setShellFactory(null);
     }
     
-    protected void configureAuthentication() {
+    private void configureAuthentication() {
         server.setUserAuthFactories(getAuthFactories());
-        server.setPasswordAuthenticator(null);
-        server.setKeyboardInteractiveAuthenticator(null);
-        server.setHostBasedAuthenticator(null);
+        server.setPasswordAuthenticator((user, pwd, session) -> {
+            return true;
+        });
+        server.setKeyboardInteractiveAuthenticator(new DefaultKeyboardInteractiveAuthenticator() {
+            @Override
+            public boolean authenticate(ServerSession session, String username, List<String> responses)
+                    throws Exception {
+                // TODO Auto-generated method stub
+                return true;
+            }
+        });
+        server.setHostBasedAuthenticator(AcceptAllHostBasedAuthenticator.INSTANCE);
        
         server.setPublickeyAuthenticator((userName, publicKey, session) -> {
             return true;
@@ -87,8 +100,8 @@ public class SimpleGitServer {
                 ServerAuthenticationManager.DEFAULT_USER_AUTH_PUBLIC_KEY_FACTORY);
         authentications.add(
                 ServerAuthenticationManager.DEFAULT_USER_AUTH_KB_INTERACTIVE_FACTORY);
-        authentications.add(
-                ServerAuthenticationManager.DEFAULT_USER_AUTH_PASSWORD_FACTORY);
+//        authentications.add(
+//                ServerAuthenticationManager.DEFAULT_USER_AUTH_PASSWORD_FACTORY);
         return authentications;
     }
     
